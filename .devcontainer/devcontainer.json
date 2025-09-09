@@ -6,5 +6,5 @@
       "extensions": ["rust-lang.rust-analyzer"]
     }
   },
-  "postCreateCommand": "rustup component add rustfmt clippy && cargo fetch"
+  "postCreateCommand": "rustup component add rustfmt clippy && cargo fetch && bash -lc \"echo \\\"alias cb='cargo build -p'\\\" >> ~/.bash_aliases\""
 }

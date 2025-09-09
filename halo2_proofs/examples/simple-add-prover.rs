@@ -1,9 +1,12 @@
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     pasta::Fp,
-    plonk::{Circuit, ConstraintSystem, Error},
-    dev::MockProver,
+    plonk::{self, Circuit, ConstraintSystem, Error, SingleVerifier},
+    poly::commitment::Params,
+    transcript::{Blake2bRead, Blake2bWrite, Challenge255},
 };
+use pasta_curves::EqAffine;
+use rand_core::OsRng;
 
 #[derive(Clone)]
 struct MyCircuit {
@@ -18,7 +21,6 @@ struct Config {
     c: halo2_proofs::plonk::Column<halo2_proofs::plonk::Advice>,
     sel: halo2_proofs::plonk::Selector,
 }
-
 
 impl Circuit<Fp> for MyCircuit {
     type Config = Config;
@@ -48,8 +50,8 @@ impl Circuit<Fp> for MyCircuit {
     fn synthesize(&self, cfg: Self::Config, mut layouter: impl Layouter<Fp>) -> Result<(), Error> {
         layouter.assign_region(|| "region", |mut region| {
             cfg.sel.enable(&mut region, 0)?;
-            let va = region.assign_advice(|| "a", cfg.a, 0, || self.a)?;
-            let vb = region.assign_advice(|| "b", cfg.b, 0, || self.b)?;
+            let _va = region.assign_advice(|| "a", cfg.a, 0, || self.a)?;
+            let _vb = region.assign_advice(|| "b", cfg.b, 0, || self.b)?;
             let sum = self.a.zip(self.b).map(|(a, b)| a + b);
             let _vc = region.assign_advice(|| "c", cfg.c, 0, || sum)?;
             Ok(())
@@ -58,41 +60,28 @@ impl Circuit<Fp> for MyCircuit {
 }
 
 fn main() {
-    let circuit = MyCircuit {
-        a: Value::known(Fp::from(2)),
-        b: Value::known(Fp::from(3)),
-    };
-    let prover = MockProver::run(4, &circuit, vec![]).unwrap();
-    assert_eq!(prover.verify(), Ok(()));
-    println!("Constraint satisfied: a + b = c");
+    // Construct a tiny circuit instance a=2, b=3.
+    let circuit = MyCircuit { a: Value::known(Fp::from(2)), b: Value::known(Fp::from(3)) };
 
-    use halo2_proofs::{
-        plonk,
-        poly::commitment::Params,
-        transcript::{Blake2bWrite, Challenge255},
-    };
-    use pasta_curves::EqAffine;
-    // use rand::rngs::OsRng;
-    use rand_core::OsRng;
-
+    // Public parameters and keys.
     let k = 4;
     let params = Params::new(k);
     let vk = plonk::keygen_vk(&params, &circuit).unwrap();
     let pk = plonk::keygen_pk(&params, vk, &circuit).unwrap();
-    
-    let circuit_for_proof = circuit.clone();
-    
+
+    // Create proof bytes.
     let mut transcript = Blake2bWrite::<_, EqAffine, Challenge255<_>>::init(vec![]);
-    plonk::create_proof(
-        &params,
-        &pk,
-        &[circuit_for_proof],
-        &[&[]], // no public inputs
-        OsRng,
-        &mut transcript,
-    ).unwrap();
+    plonk::create_proof(&params, &pk, &[circuit.clone()], &[&[]], OsRng, &mut transcript)
+        .expect("proof generation");
     let proof: Vec<u8> = transcript.finalize();
-    
     println!("proof size: {} bytes ({:.2} KiB)", proof.len(), proof.len() as f64 / 1024.0);
-    std::fs::write("/workspaces/halo2/proof.bin", &proof).expect("write proof");
+
+    // Verify proof bytes.
+    let strategy = SingleVerifier::new(&params);
+    let mut transcript = Blake2bRead::<_, EqAffine, Challenge255<_>>::init(&proof[..]);
+    plonk::verify_proof(&params, pk.get_vk(), strategy, &[&[]], &mut transcript)
+        .expect("verification");
+    println!("verification ok");
 }
+
+
