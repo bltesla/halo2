@@ -1,0 +1,1 @@
+cargo build -p simple_add_ffi --release --target x86_64-pc-windows-gnu
