@@ -834,6 +834,27 @@ mod tests {
     }
 
     #[test]
+    fn poseidon_hash_rejects_wrong_output() {
+        let rng = OsRng;
+
+        let message = [Fp::random(rng), Fp::random(rng)];
+        let output =
+            poseidon::Hash::<_, OrchardNullifier, ConstantLength<2>, 3, 2>::init().hash(message);
+
+        // Deliberately alter the expected output so the proof should fail.
+        let wrong_output = output + Fp::from(1);
+
+        let k = 6;
+        let circuit = MyHashCircuit::<OrchardNullifier, 3, 2, 2> {
+            message: Value::known(message),
+            output: Value::known(wrong_output),
+            _spec: PhantomData,
+        };
+        let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+        assert!(prover.verify().is_err());
+    }
+
+    #[test]
     fn poseidon_hash_longer_input() {
         let rng = OsRng;
 
