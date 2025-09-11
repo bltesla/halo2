@@ -22,6 +22,7 @@ struct Config {
     a: halo2_proofs::plonk::Column<halo2_proofs::plonk::Advice>,
     b: halo2_proofs::plonk::Column<halo2_proofs::plonk::Advice>,
     c: halo2_proofs::plonk::Column<halo2_proofs::plonk::Advice>,
+    c_inst: halo2_proofs::plonk::Column<halo2_proofs::plonk::Instance>,
     sel: halo2_proofs::plonk::Selector,
 }
 
@@ -37,6 +38,7 @@ impl Circuit<Fp> for MyCircuit {
         let a = meta.advice_column();
         let b = meta.advice_column();
         let c = meta.advice_column();
+        let c_inst = meta.instance_column();
         let sel = meta.selector();
 
         meta.create_gate("a + b = c", |meta| {
@@ -44,10 +46,12 @@ impl Circuit<Fp> for MyCircuit {
             let a = meta.query_advice(a, halo2_proofs::poly::Rotation::cur());
             let b = meta.query_advice(b, halo2_proofs::poly::Rotation::cur());
             let c = meta.query_advice(c, halo2_proofs::poly::Rotation::cur());
-            vec![s * (a + b - c)]
+            let c_pub = meta.query_instance(c_inst, halo2_proofs::poly::Rotation::cur());
+            // Constrain: a + b = c, and c equals the public instance
+            vec![s.clone() * (a + b - c.clone()), s * (c - c_pub)]
         });
 
-        Config { a, b, c, sel }
+        Config { a, b, c, c_inst, sel }
     }
 
     fn synthesize(&self, cfg: Self::Config, mut layouter: impl Layouter<Fp>) -> Result<(), Error> {
@@ -82,7 +86,9 @@ pub extern "C" fn verify_simple_add_proof(
     };
     let strategy = SingleVerifier::new(&params);
     let mut transcript = Blake2bRead::<_, EqAffine, Challenge255<_>>::init(proof);
-    match plonk::verify_proof(&params, &vk, strategy, &[&[]], &mut transcript) {
+    // Public instance: c = a + b
+    let inst_c: [Fp; 1] = [Fp::from(a) + Fp::from(b)];
+    match plonk::verify_proof(&params, &vk, strategy, &[&[&inst_c[..]]], &mut transcript) {
         Ok(_) => 0,
         Err(_) => -1,
     }
@@ -114,7 +120,9 @@ pub extern "C" fn create_simple_add_proof(
     };
 
     let mut transcript = Blake2bWrite::<_, EqAffine, Challenge255<_>>::init(vec![]);
-    if plonk::create_proof(&params, &pk, &[circuit.clone()], &[&[]], OsRng, &mut transcript).is_err()
+    // Public instance: c = a + b
+    let inst_c: [Fp; 1] = [Fp::from(a) + Fp::from(b)];
+    if plonk::create_proof(&params, &pk, &[circuit.clone()], &[&[&inst_c[..]]], OsRng, &mut transcript).is_err()
     {
         return -1;
     }

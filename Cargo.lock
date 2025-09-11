@@ -1797,6 +1797,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple_add_wasm"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "halo2_proofs",
+ "pasta_curves",
+ "rand_core",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "simple_vote_ffi"
 version = "0.1.0"
 dependencies = [
