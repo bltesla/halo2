@@ -5,4 +5,5 @@ members = [
     "halo2_poseidon",
     "halo2_proofs",
     "simple_add_ffi",
+    "simple_vote_ffi",
 ]

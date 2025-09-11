@@ -12,6 +12,7 @@ import "C"
 import (
     "fmt"
     "io/ioutil"
+    "time"
     "unsafe"
 )
 
@@ -23,23 +24,27 @@ func main() {
 
     var outPtr *C.uchar
     var outLen C.ulong
+    startProve := time.Now()
     res := C.create_simple_add_proof(k, a, b, &outPtr, &outLen)
     if res != 0 {
         panic("Failed to create proof")
     }
+    proveMs := time.Since(startProve).Milliseconds()
     defer C.free_simple_add_bytes(outPtr, outLen)
 
     // Verify the generated proof
+    startVerify := time.Now()
     if C.verify_simple_add_proof(k, a, b, outPtr, outLen) != 0 { panic("verify failed") }
+    verifyMs := time.Since(startVerify).Milliseconds()
 
-    fmt.Println("Proof created and verified successfully. ")
+    fmt.Printf("Proof created and verified successfully. size=%d bytes, prove=%dms, verify=%dms\n", uint64(outLen), proveMs, verifyMs)
 
     // Save proof to file
     proofBytes := C.GoBytes(unsafe.Pointer(outPtr), C.int(outLen))
     if err := ioutil.WriteFile("../proof.bin", proofBytes, 0644); err != nil {
         panic(fmt.Sprintf("Failed to write proof: %v", err))
     }
-    fmt.Println("Proof saved to proof.bin. proof size: ", outLen)
+    fmt.Println("Proof saved to proof.bin")
 
 
 
