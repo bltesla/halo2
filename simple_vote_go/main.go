@@ -4,7 +4,7 @@ package main
 #cgo LDFLAGS: -L../target/release -lsimple_vote_ffi
 
 extern int create_simple_vote_proof(unsigned int k, unsigned long long t_public, unsigned long long v_private, unsigned char** com_ptr, unsigned long* com_len, unsigned char** out_ptr, unsigned long* out_len);
-extern int verify_simple_vote_proof(unsigned int k, unsigned long long t_public, const unsigned char* proof_ptr, unsigned long proof_len);
+extern int verify_simple_vote_proof(unsigned int k, unsigned long long t_public, const unsigned char* h_ptr, unsigned long h_len, const unsigned char* proof_ptr, unsigned long proof_len);
 extern void free_simple_vote_bytes(unsigned char* ptr, unsigned long len);
 */
 import "C"
@@ -47,7 +47,7 @@ func createAndVerifyVoteProof(k C.uint, t, v C.ulonglong, outP **C.uchar, outL *
 	defer C.free_simple_vote_bytes(*outP, *outL)
 
 	startVerify := time.Now()
-	if C.verify_simple_vote_proof(k, t, *outP, *outL) != 0 {
+	if C.verify_simple_vote_proof(k, t, comPtr, comLen, *outP, *outL) != 0 {
 		fmt.Println("vote proof verification failed")
 	}
 	verifyMs := time.Since(startVerify).Milliseconds()
@@ -58,4 +58,8 @@ func createAndVerifyVoteProof(k C.uint, t, v C.ulonglong, outP **C.uchar, outL *
 	// if err := ioutil.WriteFile("../proof_vote.bin", proofBytes, 0644); err != nil {
 	// 	panic(fmt.Sprintf("Failed to write vote proof: %v", err))
 	// }
+
+	if comPtr != nil && comLen > 0 {
+		C.free_simple_vote_bytes(comPtr, comLen)
+	}
 }
