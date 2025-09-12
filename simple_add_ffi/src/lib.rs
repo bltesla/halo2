@@ -60,8 +60,7 @@ impl Circuit<Fp> for MyCircuit {
             let _va = region.assign_advice(|| "a", cfg.a, 0, || self.a)?;
             let _vb = region.assign_advice(|| "b", cfg.b, 0, || self.b)?;
             let sum = self.a.zip(self.b).map(|(a, b)| a + b);
-            let _vc = region.assign_advice(|| "c", cfg.c, 0, || sum)?;
-            Ok(())
+            let _vc = region.assign_advice(|| "c", z
         })
     }
 }

@@ -1811,6 +1811,7 @@ dependencies = [
 name = "simple_vote_ffi"
 version = "0.1.0"
 dependencies = [
+ "halo2_gadgets",
  "halo2_proofs",
  "pasta_curves",
  "rand_core",

@@ -11,37 +11,49 @@ import "C"
 
 import (
     "fmt"
-    "io/ioutil"
+    // "io/ioutil"
     "time"
-    "unsafe"
+    // "unsafe"
 )
 
 func main() {
 
     k := C.uint(4)
-    t := C.ulonglong(1) // claimed tally increment (public)
-    v := C.ulonglong(1) // private vote bit
+    t := C.ulonglong(99) // claimed tally increment (public)
+    v := C.ulonglong(99) // private vote bit
 
     var outPtr *C.uchar
     var outLen C.ulong
-    startProve := time.Now()
-    if C.create_simple_vote_proof(k, t, v, &outPtr, &outLen) != 0 {
-        panic("Failed to create vote proof")
-    }
-    proveMs := time.Since(startProve).Milliseconds()
-    defer C.free_simple_vote_bytes(outPtr, outLen)
 
-    startVerify := time.Now()
-    if C.verify_simple_vote_proof(k, t, outPtr, outLen) != 0 {
-        panic("vote proof verification failed")
-    }
-    verifyMs := time.Since(startVerify).Milliseconds()
+	createAndVerifyVoteProof(k, t, v, &outPtr, &outLen)
 
-    proofBytes := C.GoBytes(unsafe.Pointer(outPtr), C.int(outLen))
-    if err := ioutil.WriteFile("../proof_vote.bin", proofBytes, 0644); err != nil {
-        panic(fmt.Sprintf("Failed to write vote proof: %v", err))
-    }
-    fmt.Printf("Vote proof saved to proof_vote.bin. size: %d bytes. prove=%dms verify=%dms\n", uint64(outLen), proveMs, verifyMs)
+	t = C.ulonglong(99) // claimed tally increment (public)
+    v = C.ulonglong(100) // private vote bit
+
+	createAndVerifyVoteProof(k, t, v, &outPtr, &outLen)
+
 }
 
+func createAndVerifyVoteProof(k C.uint, t, v C.ulonglong, outPtr **C.uchar, outLen *C.ulong) {
+	fmt.Printf(" test case for t=%d, v=%d\n", t, v)
 
+	startProve := time.Now()
+	if C.create_simple_vote_proof(k, t, v, outPtr, outLen) != 0 {
+		panic("Failed to create vote proof")
+	}
+	proveMs := time.Since(startProve).Milliseconds()
+	defer C.free_simple_vote_bytes(*outPtr, *outLen)
+
+	startVerify := time.Now()
+	if C.verify_simple_vote_proof(k, t, *outPtr, *outLen) != 0 {
+		fmt.Println("vote proof verification failed")
+	}
+	verifyMs := time.Since(startVerify).Milliseconds()
+
+	fmt.Printf("proof size: %d bytes. prove=%dms verify=%dms\n\n", uint64(*outLen), proveMs, verifyMs)
+
+	// proofBytes := C.GoBytes(unsafe.Pointer(*outPtr), C.int(*outLen))
+	// if err := ioutil.WriteFile("../proof_vote.bin", proofBytes, 0644); err != nil {
+	// 	panic(fmt.Sprintf("Failed to write vote proof: %v", err))
+	// }
+}
