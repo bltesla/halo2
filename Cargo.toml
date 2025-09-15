@@ -6,5 +6,6 @@ members = [
     "halo2_proofs",
     "simple_add_ffi",
     "simple_vote_ffi",
+    "simple_vote_recursive",
     "simple_add_wasm",
 ]

@@ -2,7 +2,7 @@ use std::os::raw::c_int;
 
 use halo2_proofs::{
     arithmetic::Field,
-    circuit::{Layouter, SimpleFloorPlanner, Value},
+    circuit::{AssignedCell, Layouter, SimpleFloorPlanner, Value},
     pasta::Fp,
     plonk::{self, Circuit, ConstraintSystem, Error, SingleVerifier},
     poly::commitment::Params,
@@ -10,7 +10,7 @@ use halo2_proofs::{
 };
 use pasta_curves::{EqAffine, group::ff::PrimeField};
 use rand_core::OsRng;
-use halo2_gadgets::poseidon::{Pow5Chip, Pow5Config, primitives as poseidon};
+use halo2_gadgets::poseidon::{Hash, Pow5Chip, Pow5Config, primitives as poseidon};
 use halo2_gadgets::poseidon::primitives::{ConstantLength, Spec};
 
 #[derive(Clone)]
@@ -39,13 +39,18 @@ impl Circuit<Fp> for VoteCircuit {
     fn without_witnesses(&self) -> Self {
         Self { v: Value::unknown(), t: Value::unknown(), h: Value::unknown() }
     }
-
+    
     fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
         let v = meta.advice_column();
         let t = meta.instance_column();
         let h = meta.instance_column();
         let sel = meta.selector();
 
+        // Enable equality on columns we will compare / constrain
+        meta.enable_equality(v);   // so we can constrain v to instance if needed
+        meta.enable_equality(t);   // required to constrain instance equality
+        meta.enable_equality(h);
+        
         let state = [meta.advice_column(), meta.advice_column(), meta.advice_column()];
         let partial_sbox = meta.advice_column();
         let rc_a = [meta.fixed_column(), meta.fixed_column(), meta.fixed_column()];
@@ -68,22 +73,28 @@ impl Circuit<Fp> for VoteCircuit {
         Config { v, t, h, sel, poseidon }
     }
 
-    fn synthesize(&self, cfg: Self::Config, mut layouter: impl Layouter<Fp>) -> Result<(), Error> {
-        layouter.assign_region(|| "vote", |mut region| {
-            cfg.sel.enable(&mut region, 0)?;
-            region.assign_advice(|| "v", cfg.v, 0, || self.v)?;
-            Ok(())
-        })?;
 
-        // This is a simplified approach. In a full circuit, you would
-        // constrain the hash output against the public input `h`.
-        //
-        // layouter.assign_region(|| "constrain hash output", |mut region| {
-        //     let hash_assigned = hash_circuit_res?;
-        //     let h_assigned = region.assign_instance(|| "h", cfg.h, 0, || self.h)?;
-        //     region.constrain_equal(&hash_assigned, &h_assigned)?;
-        //     Ok(())
-        // })?;
+    fn synthesize(&self, cfg: Self::Config, mut layouter: impl Layouter<Fp>) -> Result<(), Error> {
+        // Assign private vote value
+        let v_assigned: AssignedCell<Fp, Fp> = layouter.assign_region(
+            || "assign v",
+            |mut region| {
+                cfg.sel.enable(&mut region, 0)?;
+                region.assign_advice(|| "v", cfg.v, 0, || self.v)
+            },
+        )?;
+
+        // Poseidon hash v and constrain to public instance h
+        let chip = Pow5Chip::<Fp, 3, 2>::construct(cfg.poseidon.clone());
+        let hasher = Hash::<_, _, MySpec, ConstantLength<1>, 3, 2>::init(
+            chip,
+            layouter.namespace(|| "poseidon init"),
+        )?;
+        let output = hasher.hash(layouter.namespace(|| "poseidon hash"), [v_assigned])?;
+        layouter.constrain_instance(output.cell(), cfg.h, 0)?;
+
+        // If enforcing v = t is desired, uncomment next line
+        // layouter.constrain_instance(v_assigned.cell(), cfg.t, 0)?;
 
         Ok(())
     }
@@ -200,7 +211,7 @@ mod tests {
 
     #[test]
     fn test_vote_proof_roundtrip() {
-        let k: u32 = 4;
+        let k: u32 = 7;
         let vote: u64 = 42;
         let secret: u64 = 42;
 
@@ -242,7 +253,7 @@ mod tests {
 
     #[test]
     fn test_vote_proof_invalid_vote() {
-        let k: u32 = 4;
+        let k: u32 = 7;
         let vote: u64 = 42;
         let secret: u64 = 42;
 
