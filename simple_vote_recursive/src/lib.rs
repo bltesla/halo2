@@ -182,6 +182,7 @@ mod tests {
         ).is_ok());
     }
 
+
     #[test]
     fn test_multiple_votes_batch() {
         // Test with 3 votes: yes, no, yes
@@ -196,12 +197,10 @@ mod tests {
         
         // Test each vote individually
         for (i, &vote) in votes.iter().enumerate() {
-            let h = poseidon::Hash::<_, MySpec, ConstantLength<1>, 3, 2>::init().hash([vote]);
             
             let circuit = VoteCircuit {
                 v: Value::known(vote),
                 t: Value::known(target),
-                h: Value::known(h),
             };
             
             // Public inputs must match instance column order: [t]
@@ -220,17 +219,14 @@ mod tests {
         // Test with target = 0 (no)
         let target_no = Fp::from(0u64);
         for (i, &vote) in votes.iter().enumerate() {
-            let h = poseidon::Hash::<_, MySpec, ConstantLength<1>, 3, 2>::init().hash([vote]);
             
             let circuit = VoteCircuit {
                 v: Value::known(vote),
                 t: Value::known(target_no),
-                h: Value::known(h),
             };
             
             let mut public_inputs = Vec::new();
             public_inputs.push(target_no);
-            public_inputs.push(h);
             let mut prover_inputs = Vec::new();
             prover_inputs.push(public_inputs);
             let prover = MockProver::run(k, &circuit, prover_inputs).unwrap();
