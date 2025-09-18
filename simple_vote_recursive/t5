@@ -1,0 +1,1 @@
+cargo test --package simple_vote_recursive --lib -- tests::test_five_vote_aggregation_with_performance --exact --show-output 
