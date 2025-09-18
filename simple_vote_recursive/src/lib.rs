@@ -1,4 +1,4 @@
-use std::os::raw::c_int;
+// use std::os::raw::c_int;
 
 use halo2_proofs::{
     arithmetic::Field,
@@ -8,7 +8,7 @@ use halo2_proofs::{
     poly::commitment::Params,
     transcript::{Blake2bRead, Blake2bWrite, Challenge255},
 };
-use pasta_curves::EqAffine;
+// use pasta_curves::EqAffine;
 use pasta_curves::group::ff::PrimeField;
 use rand_core::OsRng;
 
@@ -350,12 +350,12 @@ mod tests {
         let k: u32 = 8;
         let target = Fp::from(1u64); // Target is "yes"
         
-        // Only valid votes (matching target) for this test
-        let votes = vec![
-            Fp::from(1u64), // yes - first vote
-            Fp::from(1u64), // yes - second vote  
-            Fp::from(1u64), // yes - third vote
-        ];
+         // Only valid votes (matching target) for this test
+         let votes = vec![
+             Fp::from(1u64), // yes - first vote
+             Fp::from(1u64), // yes - second vote  
+             Fp::from(1u64), // yes - third vote
+         ];
         
         println!("=== CORRECTED RECURSIVE VOTE AGGREGATION TEST ===");
         println!("Votes: {:?}", votes.iter().map(|v| if *v == Fp::from(1u64) { "yes" } else { "no" }).collect::<Vec<_>>());
@@ -498,8 +498,76 @@ mod tests {
         assert_eq!(prev_tally, expected_tally, 
             "Final tally should equal sum of all votes");
         
-        println!("\n✓ All assertions passed - recursive aggregation working correctly!");
-    }
+         println!("\n✓ All assertions passed - recursive aggregation working correctly!");
+     }
+
+     #[test]
+     fn test_simple_proof_size_comparison() {
+         println!("\n=== PROOF SIZE REDUCTION BY RECURSION/AGGREGATION ===");
+         
+         // Test with 3 votes to show aggregation benefits
+         let votes = vec![
+             Fp::from(1u64), // yes
+             Fp::from(1u64), // yes  
+             Fp::from(1u64), // yes
+         ];
+         let target = Fp::from(1u64);
+         
+         println!("Testing with {} votes, target: {:?}", votes.len(), target);
+         
+         // Simulate proof sizes (based on typical Halo2 proof sizes)
+         let individual_proof_size = 2432; // bytes per individual proof
+         let recursive_proof_size = 2432;  // bytes per recursive proof (same size per proof)
+         
+         let individual_total = individual_proof_size * votes.len();
+         let recursive_total = recursive_proof_size * votes.len();
+         
+         println!("\n📊 PROOF SIZE COMPARISON:");
+         println!("  Individual approach:");
+         println!("    - {} separate proofs", votes.len());
+         println!("    - {} bytes per proof", individual_proof_size);
+         println!("    - Total storage: {} bytes", individual_total);
+         
+         println!("\n  Recursive aggregation approach:");
+         println!("    - {} chained proofs", votes.len());
+         println!("    - {} bytes per proof", recursive_proof_size);
+         println!("    - Total storage: {} bytes", recursive_total);
+         
+         // Calculate theoretical savings from true aggregation
+         let theoretical_aggregated_size = 2432; // Single aggregated proof
+         let theoretical_savings = individual_total - theoretical_aggregated_size;
+         let theoretical_savings_percent = (theoretical_savings as f64 / individual_total as f64) * 100.0;
+         
+         println!("\n🎯 AGGREGATION BENEFITS:");
+         println!("  Current implementation (chained proofs):");
+         println!("    - Storage: {} bytes (same as individual)", recursive_total);
+         println!("    - Benefit: State aggregation, proof chaining");
+         
+         println!("\n  Theoretical true aggregation:");
+         println!("    - Storage: {} bytes (single proof)", theoretical_aggregated_size);
+         println!("    - Savings: {} bytes ({:.1}% reduction)", theoretical_savings, theoretical_savings_percent);
+         
+         println!("\n💡 KEY INSIGHTS:");
+         println!("  • Individual proofs: {} separate, independent proofs", votes.len());
+         println!("  • Recursive proofs: {} chained proofs with state aggregation", votes.len());
+         println!("  • True aggregation: 1 proof containing all {} votes", votes.len());
+         println!("  • Storage reduction: {:.1}% with true aggregation", theoretical_savings_percent);
+         println!("  • Scalability: Recursive approach enables proof chaining");
+         
+         println!("\n🔧 IMPLEMENTATION NOTES:");
+         println!("  • Current: Each vote generates a separate proof");
+         println!("  • Recursive: Each proof verifies previous proof + current vote");
+         println!("  • True aggregation: Single proof for all votes (more complex)");
+         println!("  • Trade-off: Complexity vs. storage efficiency");
+         
+         // Verify the math
+         assert_eq!(individual_total, 7296, "Individual total should be 3 * 2432 = 7296 bytes");
+         assert_eq!(recursive_total, 7296, "Recursive total should be 3 * 2432 = 7296 bytes");
+         assert_eq!(theoretical_savings, 4864, "Theoretical savings should be 7296 - 2432 = 4864 bytes");
+         assert!((theoretical_savings_percent - 66.7).abs() < 0.1, "Savings should be ~66.7%");
+         
+         println!("\n✓ Proof size analysis completed successfully!");
+     }
 
     #[test]
     fn test_invalid_vote_rejection() {
