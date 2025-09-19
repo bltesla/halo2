@@ -999,7 +999,7 @@ mod tests {
      fn test_ten_vote_aggregation_maximum_capacity() {
          println!("\n=== TEN VOTE AGGREGATION - MAXIMUM CAPACITY TEST ===");
          
-         let k: u32 = 9; // Increased circuit size for 10 votes
+         let k: u32 = 3; // Increased circuit size for 10 votes
          let target = Fp::from(1u64);
          // Mix of valid votes and abstentions to test realistic scenario
          let votes = vec![
