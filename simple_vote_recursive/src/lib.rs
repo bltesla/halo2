@@ -119,7 +119,7 @@ impl Circuit<Fp> for RecursiveVoteCircuit {
             let new_no = meta.query_advice(new_no_count, halo2_proofs::poly::Rotation::cur());
             let vote = meta.query_advice(current_vote, halo2_proofs::poly::Rotation::cur());
             
-            let zero = halo2_proofs::plonk::Expression::Constant(Fp::from(0));
+            // let zero = halo2_proofs::plonk::Expression::Constant(Fp::from(0));
             let one = halo2_proofs::plonk::Expression::Constant(Fp::from(1));
             
             // Democratic vote counting logic:
@@ -231,37 +231,6 @@ impl Circuit<Fp> for RecursiveVoteCircuit {
             Ok(())
     }
  }
-
-
-// Example usage function
-pub fn example_usage() -> Result<(), Box<dyn std::error::Error>> {
-    // Set up parameters for circuit size
-    let k = 6; // Circuit size parameter
-    
-    // Create first vote (yes vote)
-    let _first_vote_circuit = RecursiveVoteCircuit {
-        current_vote: Value::known(Fp::from(1)), // Yes vote
-        prev_vote_count: Value::known(Fp::from(0)),
-        prev_yes_count: Value::known(Fp::from(0)),
-        prev_no_count: Value::known(Fp::from(0)),
-        is_first_vote: Value::known(true),
-    };
-
-    // Create second vote (no vote, aggregating with first)
-    let _second_vote_circuit = RecursiveVoteCircuit {
-        current_vote: Value::known(Fp::from(0)), // No vote
-        prev_vote_count: Value::known(Fp::from(1)), // From first vote result
-        prev_yes_count: Value::known(Fp::from(1)),  // 1 yes from first vote
-        prev_no_count: Value::known(Fp::from(0)),   // 0 no from first vote
-        is_first_vote: Value::known(false),
-    };
-    
-    println!("Democratic voting circuits created successfully!");
-    println!("First vote (yes): count=1, yes=1, no=0");
-    println!("Second vote (no): count=2, yes=1, no=1");
-    
-    Ok(())
-}
 
 
 #[cfg(test)]

@@ -1838,6 +1838,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple_vote_recursive_proof"
+version = "0.1.0"
+dependencies = [
+ "halo2_gadgets",
+ "halo2_proofs",
+ "pasta_curves",
+ "rand_core",
+]
+
+[[package]]
 name = "sinsemilla"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
