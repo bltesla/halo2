@@ -1808,6 +1808,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple_vote_batch_agg"
+version = "0.1.0"
+dependencies = [
+ "halo2_gadgets",
+ "halo2_proofs",
+ "pasta_curves",
+ "rand_core",
+]
+
+[[package]]
 name = "simple_vote_ffi"
 version = "0.1.0"
 dependencies = [

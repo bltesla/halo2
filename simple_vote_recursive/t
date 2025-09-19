@@ -1,1 +1,1 @@
-cargo test -p simple_vote_recursive
+cargo test -p simple_vote_recursive test_democratic_yes_vote --release -- --nocapture
