@@ -95,6 +95,7 @@
 // - Integration with blockchain state verification
 
 use std::marker::PhantomData;
+use std::slice;
 
 use halo2_proofs::{
     circuit::{AssignedCell, Layouter, SimpleFloorPlanner, Value},
@@ -1014,4 +1015,310 @@ mod tests {
         println!("\n✅ Recursive voting with actual proofs completed successfully!");
         println!("📦 Generated {} recursive proofs totaling {:.2} KB", proof_chain.len(), total_proof_size as f64 / 1024.0);
     }
+}
+
+// FFI exports for Go integration
+use std::os::raw::{c_int, c_uint, c_uchar};
+use std::ptr;
+
+/// Create a recursive vote proof
+/// Returns 0 on success, non-zero on failure
+#[no_mangle]
+pub extern "C" fn create_recursive_vote_proof(
+    k: c_uint,
+    vote: c_uchar,
+    prev_total_ptr: *const c_uchar,
+    prev_total_len: c_uint,
+    prev_yes_ptr: *const c_uchar,
+    prev_yes_len: c_uint,
+    prev_no_ptr: *const c_uchar,
+    prev_no_len: c_uint,
+    proof_ptr: *mut *mut c_uchar,
+    proof_len: *mut u64,
+    public_ptr: *mut *mut c_uchar,
+    public_len: *mut u64,
+) -> c_int {
+    // Convert inputs
+    let vote_value = if vote == 0 { Fp::from(0) } else { Fp::from(1) };
+    
+    // Parse previous state (0 if first vote)
+    let prev_total = if prev_total_len == 0 {
+        Fp::from(0)
+    } else {
+        let bytes = unsafe { slice::from_raw_parts(prev_total_ptr, prev_total_len as usize) };
+        parse_field_from_bytes(bytes)
+    };
+    
+    let prev_yes = if prev_yes_len == 0 {
+        Fp::from(0)
+    } else {
+        let bytes = unsafe { slice::from_raw_parts(prev_yes_ptr, prev_yes_len as usize) };
+        parse_field_from_bytes(bytes)
+    };
+    
+    let prev_no = if prev_no_len == 0 {
+        Fp::from(0)
+    } else {
+        let bytes = unsafe { slice::from_raw_parts(prev_no_ptr, prev_no_len as usize) };
+        parse_field_from_bytes(bytes)
+    };
+    
+    // Create circuit
+    let circuit = RecursiveVoteCircuit {
+        current_vote: Value::known(vote_value),
+        prev_vote_count: Value::known(prev_total),
+        prev_yes_count: Value::known(prev_yes),
+        prev_no_count: Value::known(prev_no),
+        prev_proof_elements: if prev_total == Fp::from(0) {
+            None
+        } else {
+            // For demo, use placeholder proof elements
+            Some(VoteProofElements {
+                advice_commitments: vec![Value::known(Fp::from(123)), Value::known(Fp::from(456))],
+                permutation_product_commitment: Value::known(Fp::from(789)),
+                lookup_product_commitment: Value::known(Fp::from(101)),
+                vanishing_commitment: Value::known(Fp::from(112)),
+                advice_evals: vec![Value::known(Fp::from(1)), Value::known(Fp::from(0))],
+                fixed_evals: vec![Value::known(Fp::from(1))],
+                permutation_evals: vec![Value::known(Fp::from(1))],
+                ipa_proof: IPAProof {
+                    left_commitments: vec![Value::known(Fp::from(131)), Value::known(Fp::from(141))],
+                    right_commitments: vec![Value::known(Fp::from(151)), Value::known(Fp::from(161))],
+                    final_commitment: Value::known(Fp::from(171)),
+                    final_eval: Value::known(Fp::from(181)),
+                },
+                beta: Value::known(Fp::from(42)),
+                gamma: Value::known(Fp::from(84)),
+                y: Value::known(Fp::from(126)),
+                x: Value::known(Fp::from(168)),
+            })
+        },
+        prev_vkey_elements: if prev_total == Fp::from(0) {
+            None
+        } else {
+            // For demo, use placeholder vkey elements
+            Some(VoteVerificationKey {
+                fixed_commitments: vec![Value::known(Fp::from(42)), Value::known(Fp::from(84))],
+                permutation_commitments: vec![Value::known(Fp::from(126))],
+                cs_degree: Value::known(Fp::from(k as u64)),
+                num_fixed_columns: Value::known(Fp::from(2)),
+                num_advice_columns: Value::known(Fp::from(3)),
+                num_instance_columns: Value::known(Fp::from(3)),
+                ipa_generators: vec![Value::known(Fp::from(200)), Value::known(Fp::from(201))],
+            })
+        },
+    };
+    
+    // Calculate expected public outputs
+    let new_total = prev_total + Fp::from(1);
+    let new_yes = prev_yes + vote_value;
+    let new_no = prev_no + (Fp::from(1) - vote_value);
+    
+    let public_inputs = vec![
+        vec![new_total],
+        vec![new_yes], 
+        vec![new_no],
+    ];
+    
+    // Generate proof
+    use halo2_proofs::{
+        plonk::{keygen_pk, keygen_vk, create_proof},
+        poly::commitment::Params,
+        transcript::{Blake2bWrite, Challenge255},
+    };
+    use pasta_curves::EqAffine;
+    use rand_core::OsRng;
+    
+    let params = match std::panic::catch_unwind(|| Params::new(k)) {
+        Ok(p) => p,
+        Err(_) => return 1,
+    };
+    
+    let dummy_circuit = circuit.without_witnesses();
+    let vk = match keygen_vk(&params, &dummy_circuit) {
+        Ok(vk) => vk,
+        Err(_) => return 2,
+    };
+    
+    let pk = match keygen_pk(&params, vk, &dummy_circuit) {
+        Ok(pk) => pk,
+        Err(_) => return 3,
+    };
+    
+    let mut transcript = Blake2bWrite::<_, EqAffine, Challenge255<_>>::init(vec![]);
+    
+    if create_proof(
+        &params,
+        &pk,
+        &[circuit],
+        &[&[&public_inputs[0][..], &public_inputs[1][..], &public_inputs[2][..]]],
+        OsRng,
+        &mut transcript,
+    ).is_err() {
+        return 4;
+    }
+    
+    let proof_bytes = transcript.finalize();
+    
+    // Serialize public outputs (simplified)
+    let mut public_bytes = Vec::new();
+    public_bytes.extend_from_slice(&field_to_bytes(new_total));
+    public_bytes.extend_from_slice(&field_to_bytes(new_yes));
+    public_bytes.extend_from_slice(&field_to_bytes(new_no));
+    
+    // Allocate and return proof
+    let proof_box = proof_bytes.into_boxed_slice();
+    let proof_raw = Box::into_raw(proof_box);
+    unsafe {
+        *proof_ptr = (*proof_raw).as_mut_ptr();
+        *proof_len = (*proof_raw).len() as u64;
+    }
+    std::mem::forget(proof_raw);
+    
+    // Allocate and return public outputs
+    let public_box = public_bytes.into_boxed_slice();
+    let public_raw = Box::into_raw(public_box);
+    unsafe {
+        *public_ptr = (*public_raw).as_mut_ptr();
+        *public_len = (*public_raw).len() as u64;
+    }
+    std::mem::forget(public_raw);
+    
+    0 // Success
+}
+
+/// Verify a recursive vote proof
+/// Returns 0 on success, non-zero on failure
+#[no_mangle]
+pub extern "C" fn verify_recursive_vote_proof(
+    k: c_uint,
+    vote: c_uchar,
+    prev_total_ptr: *const c_uchar,
+    prev_total_len: c_uint,
+    prev_yes_ptr: *const c_uchar,
+    prev_yes_len: c_uint,
+    prev_no_ptr: *const c_uchar,
+    prev_no_len: c_uint,
+    proof_ptr: *const c_uchar,
+    proof_len: u64,
+    public_ptr: *const c_uchar,
+    public_len: u64,
+) -> c_int {
+    // Parse inputs
+    let vote_value = if vote == 0 { Fp::from(0) } else { Fp::from(1) };
+    
+    let prev_total = if prev_total_len == 0 {
+        Fp::from(0)
+    } else {
+        let bytes = unsafe { slice::from_raw_parts(prev_total_ptr, prev_total_len as usize) };
+        parse_field_from_bytes(bytes)
+    };
+    
+    let prev_yes = if prev_yes_len == 0 {
+        Fp::from(0)
+    } else {
+        let bytes = unsafe { slice::from_raw_parts(prev_yes_ptr, prev_yes_len as usize) };
+        parse_field_from_bytes(bytes)
+    };
+    
+    let prev_no = if prev_no_len == 0 {
+        Fp::from(0)
+    } else {
+        let bytes = unsafe { slice::from_raw_parts(prev_no_ptr, prev_no_len as usize) };
+        parse_field_from_bytes(bytes)
+    };
+    
+    // Parse proof and public inputs
+    let proof_bytes = unsafe { slice::from_raw_parts(proof_ptr, proof_len as usize) };
+    let public_bytes = unsafe { slice::from_raw_parts(public_ptr, public_len as usize) };
+    
+    // Parse public outputs
+    if public_bytes.len() < 24 {
+        return 5; // Invalid public input length
+    }
+    
+    let new_total = parse_field_from_bytes(&public_bytes[0..8]);
+    let new_yes = parse_field_from_bytes(&public_bytes[8..16]);
+    let new_no = parse_field_from_bytes(&public_bytes[16..24]);
+    
+    let public_inputs = vec![
+        vec![new_total],
+        vec![new_yes],
+        vec![new_no],
+    ];
+    
+    // Verify proof
+    use halo2_proofs::{
+        plonk::{keygen_pk, keygen_vk, verify_proof, SingleVerifier},
+        poly::commitment::Params,
+        transcript::{Blake2bRead, Challenge255},
+    };
+    use pasta_curves::EqAffine;
+    
+    let params = match std::panic::catch_unwind(|| Params::new(k)) {
+        Ok(p) => p,
+        Err(_) => return 1,
+    };
+    
+    let dummy_circuit = RecursiveVoteCircuit {
+        current_vote: Value::unknown(),
+        prev_vote_count: Value::unknown(),
+        prev_yes_count: Value::unknown(),
+        prev_no_count: Value::unknown(),
+        prev_proof_elements: None,
+        prev_vkey_elements: None,
+    };
+    
+    let vk = match keygen_vk(&params, &dummy_circuit) {
+        Ok(vk) => vk,
+        Err(_) => return 2,
+    };
+    
+    let pk = match keygen_pk(&params, vk, &dummy_circuit) {
+        Ok(pk) => pk,
+        Err(_) => return 3,
+    };
+    
+    let strategy = SingleVerifier::new(&params);
+    let mut transcript = Blake2bRead::<_, EqAffine, Challenge255<_>>::init(proof_bytes);
+    
+    if verify_proof(
+        &params,
+        pk.get_vk(),
+        strategy,
+        &[&[&public_inputs[0][..], &public_inputs[1][..], &public_inputs[2][..]]],
+        &mut transcript,
+    ).is_err() {
+        return 4;
+    }
+    
+    0 // Success
+}
+
+/// Free memory allocated by the Rust FFI functions
+#[no_mangle]
+pub extern "C" fn free_recursive_vote_bytes(ptr: *mut c_uchar, len: u64) {
+    if !ptr.is_null() {
+        unsafe {
+            let slice = slice::from_raw_parts_mut(ptr, len as usize);
+            let _ = Box::from_raw(slice);
+        }
+    }
+}
+
+// Helper functions for FFI
+fn parse_field_from_bytes(bytes: &[u8]) -> Fp {
+    if bytes.is_empty() {
+        return Fp::from(0);
+    }
+    // Simple parsing - take first byte as field element
+    // In production, use proper field element deserialization
+    Fp::from(bytes[0] as u64)
+}
+
+fn field_to_bytes(field: Fp) -> [u8; 8] {
+    // Simple serialization - convert to u64 and serialize
+    // In production, use proper field element serialization
+    let value = field.to_repr().as_ref()[0] as u64;
+    value.to_le_bytes()
 }

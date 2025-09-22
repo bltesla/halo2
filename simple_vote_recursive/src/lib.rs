@@ -167,9 +167,17 @@ impl Circuit<Fp> for RecursiveVoteCircuit {
         }
     }
 
+fn synthesize(&self, cdfg:Self::Config, mut layouter: impl Layouter<Fp>) -> Result<(), Error> {
+    let cells = layouter.assign_region(
+        ||"recursive vote using inner product argument",
+        |mut region} {
+            let _vote_cell = region.assign_advice(||"current vote", cfg.current_vote, 0, ||self.current_vote)?;)
+        }
+}
+
     fn synthesize(&self, cfg: Self::Config, mut layouter: impl Layouter<Fp>) -> Result<(), Error> {
         let cells = layouter.assign_region(
-            || "democratic recursive vote aggregation",
+            || "recursive vote aggregation",
          |mut region| {
                 // Assign all input values
                 let _vote_cell = region.assign_advice(|| "current vote", cfg.current_vote, 0, || self.current_vote)?;
